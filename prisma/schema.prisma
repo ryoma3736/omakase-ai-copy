@@ -59,9 +59,6 @@ model User {
   emailVerified DateTime?
   image         String?
   plan          String    @default("FREE") // FREE, INTERN, ASSOCIATE, PRINCIPAL
-  stripeCustomerId       String?   @unique
-  stripeSubscriptionId   String?   @unique
-  stripeSubscriptionStatus String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -72,21 +69,23 @@ model User {
 }
 
 model Agent {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
   websiteUrl   String
   description  String?
-  isActive     Boolean  @default(true)
-  widgetConfig Json?    // Widget customization settings
-  personality  Json?    // Personality settings (tone, style, etc.)
+  isActive     Boolean @default(true)
+  widgetConfig Json? // Widget customization settings
+  personality  Json? // Personality settings (tone, style, etc.)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  knowledgeBase KnowledgeBase[]
-  conversations Conversation[]
-  products      Product[]
-  analytics     AgentAnalytics[]
+  knowledgeBase     KnowledgeBase[]
+  knowledgeDocuments KnowledgeDocument[]
+  conversations     Conversation[]
+  products          Product[]
+  analytics         AgentAnalytics[]
+  shopifyStore      ShopifyStore?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -99,7 +98,7 @@ model KnowledgeBase {
   type     KnowledgeBaseType
   title    String
   content  String            @db.Text
-  metadata Json?             // File metadata, URL info, etc.
+  metadata Json? // File metadata, URL info, etc.
   status   ProcessingStatus  @default(PENDING)
 
   agentId String
@@ -136,7 +135,7 @@ model Product {
   productUrl  String?
   category    String?
   features    String[] // Array of feature strings
-  metadata    Json?    // Additional product data
+  metadata    Json? // Additional product data
 
   agentId String
   agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -155,10 +154,10 @@ model Product {
 // ============================================
 
 model Conversation {
-  id         String             @id @default(cuid())
-  sessionId  String             // Anonymous session identifier
-  status     ConversationStatus @default(ACTIVE)
-  metadata   Json?              // Device info, referrer, etc.
+  id        String             @id @default(cuid())
+  sessionId String // Anonymous session identifier
+  status    ConversationStatus @default(ACTIVE)
+  metadata  Json? // Device info, referrer, etc.
 
   agentId String
   agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -200,7 +199,7 @@ enum MessageRole {
 
 model ProductRecommendation {
   id        String  @id @default(cuid())
-  score     Float?  // Relevance score
+  score     Float? // Relevance score
   clicked   Boolean @default(false)
   purchased Boolean @default(false)
 
@@ -225,12 +224,12 @@ model AgentAnalytics {
   date DateTime @db.Date
 
   // Metrics
-  totalConversations   Int @default(0)
-  uniqueVisitors       Int @default(0)
-  totalMessages        Int @default(0)
-  avgConversationTime  Int @default(0) // In seconds
-  productClicks        Int @default(0)
-  conversions          Int @default(0)
+  totalConversations  Int @default(0)
+  uniqueVisitors      Int @default(0)
+  totalMessages       Int @default(0)
+  avgConversationTime Int @default(0) // In seconds
+  productClicks       Int @default(0)
+  conversions         Int @default(0)
 
   agentId String
   agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -245,38 +244,131 @@ model AgentAnalytics {
 // ============================================
 
 model Subscription {
-  id                   String             @id @default(cuid())
-  plan                 SubscriptionPlan   @default(INTERN)
-  status               SubscriptionStatus @default(ACTIVE)
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
+  id                     String             @id @default(cuid())
+  userId                 String             @unique
+  stripeCustomerId       String             @unique
+  stripeSubscriptionId   String?            @unique
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+  plan                   String             @default("intern") // intern, associate, principal, enterprise
+  status                 SubscriptionStatus @default(ACTIVE)
+  billingCycle           String             @default("monthly") // monthly, yearly
+  cancelAtPeriodEnd      Boolean            @default(false)
 
-  // Usage limits
-  chatLimit       Int @default(100)  // Monthly chat limit
-  dataLimitMB     Int @default(100)  // Storage limit in MB
-  currentChatUsage Int @default(0)
-  currentDataUsage Int @default(0)
+  // Usage tracking
+  conversationsUsed  Int   @default(0)
+  productsUsed       Int   @default(0)
+  trainingDataUsedGB Float @default(0)
 
   // Billing period
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
 
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageRecords UsageRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
 }
 
-enum SubscriptionPlan {
-  INTERN     // 100 chats, 0.1GB
-  ASSOCIATE  // 1000 chats, 1GB
-  PRINCIPAL  // 5000 chats, 5GB
+model UsageRecord {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  type           String // 'conversation', 'training_data', 'product'
+  count          Int      @default(0)
+  periodStart    DateTime
+  periodEnd      DateTime
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([type])
+  @@index([periodStart, periodEnd])
 }
 
 enum SubscriptionStatus {
   ACTIVE
+  TRIALING
   PAST_DUE
   CANCELED
   PAUSED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+}
+
+// ============================================
+// Shopify Integration Models
+// ============================================
+
+model ShopifyStore {
+  id              String    @id @default(cuid())
+  agentId         String    @unique
+  shopDomain      String // e.g., "mystore.myshopify.com"
+  storefrontToken String // Storefront API access token
+  syncedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  agent    Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  products ShopifyProduct[]
+
+  @@index([agentId])
+}
+
+model ShopifyProduct {
+  id               String   @id @default(cuid())
+  storeId          String
+  shopifyId        String // Shopify product GID
+  handle           String
+  title            String
+  description      String?  @db.Text
+  price            Float
+  currency         String   @default("USD")
+  images           Json // Array of image URLs
+  variants         Json // Array of variant objects
+  availableForSale Boolean  @default(true)
+  syncedAt         DateTime @default(now())
+
+  store ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, shopifyId])
+  @@index([storeId])
+  @@index([handle])
+}
+
+// ============================================
+// Vector Knowledge Base Models
+// ============================================
+
+model KnowledgeDocument {
+  id        String   @id @default(cuid())
+  agentId   String
+  title     String
+  content   String   @db.Text
+  source    String   // 'upload', 'url', 'manual'
+  sourceUrl String?
+  type      String   // 'product', 'faq', 'page', 'custom'
+  chunks    KnowledgeChunk[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+}
+
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  content    String   @db.Text
+  embedding  Float[]  // Vector embedding
+  chunkIndex Int
+  metadata   Json?
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }

@@ -11,20 +11,20 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's Stripe customer ID
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    // Get user's subscription with Stripe customer ID
+    const subscription = await prisma.subscription.findUnique({
+      where: { userId: session.user.id },
       select: { stripeCustomerId: true },
     });
 
-    if (!user?.stripeCustomerId) {
+    if (!subscription?.stripeCustomerId) {
       return NextResponse.json(
         { error: "No subscription found" },
         { status: 400 }
       );
     }
 
-    const portalUrl = await createPortalSession(user.stripeCustomerId);
+    const portalUrl = await createPortalSession(subscription.stripeCustomerId);
 
     return NextResponse.json({ url: portalUrl });
   } catch (error) {

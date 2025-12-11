@@ -1,26 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  /* Base colors */
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Omakase.ai Dark Theme Colors */
+  --background: #000000;
+  --foreground: #ffffff;
 
-  /* Brand colors - Omakase AI inspired */
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --accent: #f97316;
-  --accent-foreground: #ffffff;
+  /* Brand colors - Omakase AI cyan accent */
+  --primary: #22d3ee;
+  --primary-foreground: #000000;
+  --secondary: rgba(255, 255, 255, 0.05);
+  --secondary-foreground: #ffffff;
+  --accent: #22d3ee;
+  --accent-foreground: #000000;
 
   /* UI colors */
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #6366f1;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #9ca3af;
+  --card: rgba(255, 255, 255, 0.05);
+  --card-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #22d3ee;
 
   /* Semantic colors */
   --destructive: #ef4444;
@@ -30,8 +30,8 @@
   --warning: #f59e0b;
   --warning-foreground: #ffffff;
 
-  /* Radius */
-  --radius: 0.5rem;
+  /* Radius - Rounded corners like Omakase.ai */
+  --radius: 1rem;
 }
 
 @theme inline {
@@ -52,32 +52,65 @@
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-heading: var(--font-montserrat), system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --primary: #818cf8;
-    --primary-foreground: #0f172a;
-    --secondary: #1e293b;
-    --secondary-foreground: #f1f5f9;
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
-    --card: #0f172a;
-    --card-foreground: #f1f5f9;
-    --border: #334155;
-    --input: #334155;
-    --ring: #818cf8;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+/* Selection color */
+::selection {
+  background-color: rgba(34, 211, 238, 0.3);
+  color: #ffffff;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Link transitions */
+a {
+  transition: color 0.2s ease;
+}
+
+/* Button base styles */
+button {
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 /* Utility classes for chat widget */
@@ -86,9 +119,58 @@ body {
 }
 
 .chat-bubble-user {
-  @apply bg-primary text-primary-foreground ml-auto;
+  @apply bg-cyan-500 text-black ml-auto;
 }
 
 .chat-bubble-assistant {
-  @apply bg-secondary text-secondary-foreground;
+  @apply bg-white/10 text-white;
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #22d3ee, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Glow effect on hover */
+.glow-hover:hover {
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.3);
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(34, 211, 238, 0.4);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }

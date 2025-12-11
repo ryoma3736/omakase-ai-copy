@@ -1,5 +1,8 @@
 import * as cheerio from "cheerio";
 import { generateResponse } from "./claude";
+import { getBrowserManager } from "./scraper/browser";
+import { ContentExtractor, type ExtractedContent } from "./scraper/extractor";
+import { AIAnalyzer, type FAQ, type ContentAnalysis } from "./scraper/analyzer";
 
 export interface ScrapedPage {
   url: string;
@@ -21,6 +24,9 @@ export interface ExtractedProduct {
   category?: string;
   features?: string[];
 }
+
+// Re-export new types for convenience
+export type { ExtractedContent, FAQ, ContentAnalysis }
 
 /**
  * Fetch and parse HTML from a URL
@@ -240,4 +246,179 @@ export async function scrapeWebsite(
   }
 
   return pages;
+}
+
+// ============================================
+// NEW PLAYWRIGHT-BASED SCRAPING FUNCTIONS
+// ============================================
+
+/**
+ * Scrape a URL with Playwright (supports JavaScript-heavy sites)
+ * @param url - The URL to scrape
+ * @param options - Scraping options
+ * @returns Extracted content with advanced features
+ */
+export async function scrapeWithPlaywright(
+  url: string,
+  options?: {
+    waitUntil?: "load" | "domcontentloaded" | "networkidle";
+    timeout?: number;
+  }
+): Promise<ExtractedContent> {
+  const browserManager = getBrowserManager();
+  await browserManager.init();
+
+  const page = await browserManager.newPage();
+
+  try {
+    await browserManager.goto(page, url, options);
+
+    const extractor = new ContentExtractor();
+    const content = await extractor.extractFromPage(page);
+
+    return content;
+  } finally {
+    await browserManager.closePage(page);
+  }
+}
+
+/**
+ * Scrape a URL and generate FAQs using AI
+ * @param url - The URL to scrape
+ * @param maxFAQs - Maximum number of FAQs to generate (default: 10)
+ * @returns Extracted content with generated FAQs
+ */
+export async function scrapeAndGenerateFAQs(
+  url: string,
+  maxFAQs: number = 10
+): Promise<{ content: ExtractedContent; faqs: FAQ[] }> {
+  const content = await scrapeWithPlaywright(url);
+
+  const analyzer = new AIAnalyzer();
+  const faqs = await analyzer.generateFAQs(content, maxFAQs);
+
+  return { content, faqs };
+}
+
+/**
+ * Scrape a URL and analyze content with AI
+ * @param url - The URL to scrape
+ * @returns Extracted content with AI analysis
+ */
+export async function scrapeAndAnalyze(
+  url: string
+): Promise<{ content: ExtractedContent; analysis: ContentAnalysis }> {
+  const content = await scrapeWithPlaywright(url);
+
+  const analyzer = new AIAnalyzer();
+  const analysis = await analyzer.analyzeContent(content);
+
+  return { content, analysis };
+}
+
+/**
+ * Scrape a URL and enhance product information with AI
+ * @param url - The URL to scrape
+ * @returns Extracted content with enhanced products
+ */
+export async function scrapeAndEnhanceProducts(url: string): Promise<{
+  content: ExtractedContent;
+  enhancedProducts: Array<{
+    name: string;
+    price?: number;
+    currency?: string;
+    description?: string;
+    imageUrl?: string;
+    productUrl?: string;
+    category?: string;
+    features?: string[];
+    generatedDescription?: string;
+    suggestedKeywords?: string[];
+  }>;
+}> {
+  const content = await scrapeWithPlaywright(url);
+
+  if (content.products.length === 0) {
+    return { content, enhancedProducts: [] };
+  }
+
+  const analyzer = new AIAnalyzer();
+  const enhancedProducts = await analyzer.enhanceProducts(
+    content.products,
+    content.mainContent || content.content
+  );
+
+  return { content, enhancedProducts };
+}
+
+/**
+ * Complete scraping with all AI features
+ * @param url - The URL to scrape
+ * @param options - Options for scraping and analysis
+ * @returns Complete scraped data with all AI enhancements
+ */
+export async function scrapeComplete(
+  url: string,
+  options?: {
+    generateFAQs?: boolean;
+    analyzeContent?: boolean;
+    enhanceProducts?: boolean;
+    maxFAQs?: number;
+  }
+): Promise<{
+  content: ExtractedContent;
+  faqs?: FAQ[];
+  analysis?: ContentAnalysis;
+  enhancedProducts?: Array<{
+    name: string;
+    price?: number;
+    currency?: string;
+    description?: string;
+    generatedDescription?: string;
+    suggestedKeywords?: string[];
+  }>;
+}> {
+  const {
+    generateFAQs = false,
+    analyzeContent = false,
+    enhanceProducts = false,
+    maxFAQs = 10,
+  } = options || {};
+
+  const content = await scrapeWithPlaywright(url);
+  const analyzer = new AIAnalyzer();
+
+  const result: {
+    content: ExtractedContent;
+    faqs?: FAQ[];
+    analysis?: ContentAnalysis;
+    enhancedProducts?: Array<{
+      name: string;
+      price?: number;
+      currency?: string;
+      description?: string;
+      generatedDescription?: string;
+      suggestedKeywords?: string[];
+    }>;
+  } = { content };
+
+  // Generate FAQs if requested
+  if (generateFAQs) {
+    result.faqs = await analyzer.generateFAQs(content, maxFAQs);
+  }
+
+  // Analyze content if requested
+  if (analyzeContent) {
+    result.analysis = await analyzer.analyzeContent(content);
+  }
+
+  // Enhance products if requested
+  if (enhanceProducts && content.products.length > 0) {
+    result.enhancedProducts = await analyzer.enhanceProducts(
+      content.products,
+      content.mainContent || content.content
+    );
+  }
+
+  return result;
 }

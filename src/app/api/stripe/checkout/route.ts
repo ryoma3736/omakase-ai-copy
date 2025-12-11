@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { createCheckoutSession, PlanType } from "@/lib/stripe";
+import { createCheckoutSession } from "@/lib/stripe";
+import { isValidPlan, type PlanId, type BillingCycle } from "@/lib/plans";
 
 export async function POST(request: Request) {
   try {
@@ -11,11 +12,31 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { planType } = body as { planType: PlanType };
+    const { planId, billingCycle } = body as {
+      planId: string;
+      billingCycle: BillingCycle;
+    };
 
-    if (!planType || !["intern", "associate", "principal"].includes(planType)) {
+    // Validate plan ID
+    if (!planId || !isValidPlan(planId)) {
       return NextResponse.json(
-        { error: "Invalid plan type" },
+        { error: "Invalid plan ID" },
+        { status: 400 }
+      );
+    }
+
+    // Validate billing cycle
+    if (!billingCycle || !["monthly", "yearly"].includes(billingCycle)) {
+      return NextResponse.json(
+        { error: "Invalid billing cycle. Must be 'monthly' or 'yearly'" },
+        { status: 400 }
+      );
+    }
+
+    // Enterprise plan requires custom quote
+    if (planId === "enterprise") {
+      return NextResponse.json(
+        { error: "Enterprise plan requires custom quote. Please contact sales." },
         { status: 400 }
       );
     }
@@ -23,7 +44,8 @@ export async function POST(request: Request) {
     const checkoutUrl = await createCheckoutSession(
       session.user.id,
       session.user.email,
-      planType
+      planId as PlanId,
+      billingCycle
     );
 
     return NextResponse.json({ url: checkoutUrl });

@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { PlanId, BillingCycle, getStripePriceId } from "./plans";
 
 // Server-side Stripe instance (lazy initialization)
 let stripeInstance: Stripe | null = null;
@@ -22,6 +23,7 @@ export const stripe = {
   get checkout() { return getStripe().checkout; },
   get billingPortal() { return getStripe().billingPortal; },
   get subscriptions() { return getStripe().subscriptions; },
+  get customers() { return getStripe().customers; },
   get invoices() { return getStripe().invoices; },
   get webhooks() { return getStripe().webhooks; },
 };
@@ -105,41 +107,77 @@ export const PLANS = {
 export type PlanType = keyof typeof PLANS;
 
 /**
- * Create a Stripe checkout session
+ * Create or retrieve Stripe customer
+ */
+export async function getOrCreateStripeCustomer(
+  userId: string,
+  email: string,
+  name?: string
+): Promise<Stripe.Customer> {
+  const stripe = getStripe();
+
+  // Search for existing customer
+  const customers = await stripe.customers.list({
+    email,
+    limit: 1,
+  });
+
+  if (customers.data.length > 0) {
+    return customers.data[0];
+  }
+
+  // Create new customer
+  return await stripe.customers.create({
+    email,
+    name,
+    metadata: {
+      userId,
+    },
+  });
+}
+
+/**
+ * Create a Stripe checkout session with new plan system
  */
 export async function createCheckoutSession(
   userId: string,
   userEmail: string,
-  planType: PlanType
+  planId: PlanId,
+  billingCycle: BillingCycle
 ): Promise<string> {
-  const plan = PLANS[planType];
+  const priceId = getStripePriceId(planId, billingCycle);
 
-  if (!plan.priceId) {
-    throw new Error("This plan does not support checkout");
+  if (!priceId) {
+    throw new Error(`No price ID configured for plan: ${planId} (${billingCycle})`);
   }
 
+  const customer = await getOrCreateStripeCustomer(userId, userEmail);
+
   const session = await getStripe().checkout.sessions.create({
-    customer_email: userEmail,
+    customer: customer.id,
     mode: "subscription",
     payment_method_types: ["card"],
     line_items: [
       {
-        price: plan.priceId,
+        price: priceId,
         quantity: 1,
       },
     ],
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/settings/billing?success=true`,
+    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/settings/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/settings/billing?canceled=true`,
     metadata: {
       userId,
-      planType,
+      planId,
+      billingCycle,
     },
     subscription_data: {
       metadata: {
         userId,
-        planType,
+        planId,
+        billingCycle,
       },
     },
+    allow_promotion_codes: true,
   });
 
   return session.url || "";
@@ -173,12 +211,54 @@ export async function getSubscription(
 }
 
 /**
- * Cancel subscription
+ * Cancel subscription (at period end)
  */
 export async function cancelSubscription(
+  subscriptionId: string,
+  immediately: boolean = false
+): Promise<Stripe.Subscription> {
+  const stripe = getStripe();
+
+  if (immediately) {
+    return await stripe.subscriptions.cancel(subscriptionId);
+  }
+
+  // Cancel at period end (user retains access until end of billing period)
+  return await stripe.subscriptions.update(subscriptionId, {
+    cancel_at_period_end: true,
+  });
+}
+
+/**
+ * Resume a canceled subscription
+ */
+export async function resumeSubscription(
   subscriptionId: string
 ): Promise<Stripe.Subscription> {
-  return await getStripe().subscriptions.cancel(subscriptionId);
+  return await getStripe().subscriptions.update(subscriptionId, {
+    cancel_at_period_end: false,
+  });
+}
+
+/**
+ * Update subscription plan
+ */
+export async function updateSubscriptionPlan(
+  subscriptionId: string,
+  newPriceId: string
+): Promise<Stripe.Subscription> {
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  return await stripe.subscriptions.update(subscriptionId, {
+    items: [
+      {
+        id: subscription.items.data[0].id,
+        price: newPriceId,
+      },
+    ],
+    proration_behavior: 'always_invoice',
+  });
 }
 
 /**

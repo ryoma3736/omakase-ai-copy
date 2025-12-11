@@ -44,12 +44,13 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { name, description, personality, widgetConfig, isActive } = body;
+    const { name, websiteUrl, description, personality, widgetConfig, isActive } = body;
 
     const agent = await prisma.agent.update({
       where: { id, userId: session.user.id },
       data: {
         ...(name !== undefined && { name }),
+        ...(websiteUrl !== undefined && { websiteUrl }),
         ...(description !== undefined && { description }),
         ...(personality !== undefined && { personality }),
         ...(widgetConfig !== undefined && { widgetConfig }),

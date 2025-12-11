@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -9,50 +9,29 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   MessageSquare,
   Users,
   TrendingUp,
   Activity,
-  Package,
-  MousePointer,
   Loader2,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
-
-interface AnalyticsData {
-  totalConversations: number;
-  totalMessages: number;
-  avgMessagesPerConversation: number;
-  conversationsByDay: { date: string; count: number }[];
-  messagesByRole: { role: string; count: number }[];
-  topAgents: { name: string; conversations: number }[];
-  conversionRate: number;
-  avgResponseTime: number;
-}
+import { useAnalytics } from "@/hooks/use-analytics";
 
 export default function AnalyticsPage() {
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds default
+  const { analytics, isLoading, isError, error, refresh, isRealTime } =
+    useAnalytics(refreshInterval);
 
-  useEffect(() => {
-    async function fetchAnalytics() {
-      try {
-        const response = await fetch("/api/analytics");
-        if (!response.ok) throw new Error("Failed to fetch analytics");
-        const data = await response.json();
-        setAnalytics(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setIsLoading(false);
-      }
-    }
+  const toggleRealTime = () => {
+    setRefreshInterval((prev) => (prev > 0 ? 0 : 30000));
+  };
 
-    fetchAnalytics();
-  }, []);
-
-  if (isLoading) {
+  if (isLoading && !analytics) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -60,10 +39,12 @@ export default function AnalyticsPage() {
     );
   }
 
-  if (error) {
+  if (isError && !analytics) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-destructive">Error: {error}</p>
+        <p className="text-destructive">
+          Error: {error instanceof Error ? error.message : "Unknown error"}
+        </p>
       </div>
     );
   }
@@ -111,12 +92,44 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">アナリティクス</h1>
-        <p className="text-muted-foreground">
-          エージェントのパフォーマンスを分析します
-        </p>
+      {/* Header with Real-time controls */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">アナリティクス</h1>
+          <p className="text-muted-foreground">
+            エージェントのパフォーマンスを分析します
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refresh()}
+            disabled={isLoading}
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
+            更新
+          </Button>
+          <Button
+            variant={isRealTime ? "default" : "outline"}
+            size="sm"
+            onClick={toggleRealTime}
+          >
+            {isRealTime ? (
+              <>
+                <Wifi className="h-4 w-4 mr-2" />
+                リアルタイム ON
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-4 w-4 mr-2" />
+                リアルタイム OFF
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Stats Grid */}
