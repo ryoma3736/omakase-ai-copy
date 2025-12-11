@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
     // Gemini 2.5 Flash TTS
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash-preview-tts",
-      // @ts-ignore - experimental config
       generationConfig: {
         responseModalities: ["AUDIO"],
         speechConfig: {
@@ -68,7 +67,7 @@ export async function POST(request: NextRequest) {
             },
           },
         },
-      },
+      } as any,
     });
 
     const result = await model.generateContent(`

@@ -63,7 +63,6 @@ async function generateChunkTTS(text: string, voice: string): Promise<string | n
   try {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash-preview-tts",
-      // @ts-ignore
       generationConfig: {
         responseModalities: ["AUDIO"],
         speechConfig: {
@@ -71,7 +70,7 @@ async function generateChunkTTS(text: string, voice: string): Promise<string | n
             prebuiltVoiceConfig: { voiceName: voice },
           },
         },
-      },
+      } as any,
     });
 
     const result = await model.generateContent(text);

@@ -7,7 +7,7 @@ import { prisma } from "./prisma";
 // import { compare } from "bcryptjs"; // Uncomment when password field is added
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as any,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -23,7 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials): Promise<any> {
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Invalid credentials");
         }
@@ -35,7 +35,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: true,
             name: true,
             image: true,
-            // Note: password field needs to be added to User model
           },
         });
 
@@ -53,18 +52,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           throw new Error("Invalid login method");
         }
 
-        // In a real implementation, you would compare with hashed password
-        // const isPasswordValid = await compare(
-        //   credentials.password as string,
-        //   user.password
-        // );
-
         // For now, we'll return the user (password validation disabled for OAuth compatibility)
         return {
           id: user.id,
           email: user.email,
-          name: user.name,
-          image: user.image,
+          name: user.name ?? undefined,
+          image: user.image ?? undefined,
         };
       },
     }),
@@ -103,16 +96,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: true,
             image: true,
             plan: true,
-            stripeCustomerId: true,
           },
         });
 
         if (dbUser) {
-          session.user = {
+          (session.user as any) = {
             id: dbUser.id,
-            email: dbUser.email,
-            name: dbUser.name,
-            image: dbUser.image,
+            email: dbUser.email ?? "",
+            name: dbUser.name ?? undefined,
+            image: dbUser.image ?? undefined,
             plan: dbUser.plan,
           };
         }

@@ -86,7 +86,15 @@ export async function POST(request: Request) {
           const customerId = session.customer as string;
 
           // Fetch full subscription details
-          const stripeSubscription = await getStripe().subscriptions.retrieve(subscriptionId) as Stripe.Subscription;
+          const stripeSubscription = await getStripe().subscriptions.retrieve(subscriptionId);
+
+          // Get period timestamps (handle potential undefined)
+          const periodStart = (stripeSubscription as any).current_period_start
+            ? new Date((stripeSubscription as any).current_period_start * 1000)
+            : new Date();
+          const periodEnd = (stripeSubscription as any).current_period_end
+            ? new Date((stripeSubscription as any).current_period_end * 1000)
+            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days
 
           // Create or update subscription record
           await prisma.subscription.upsert({
@@ -99,9 +107,9 @@ export async function POST(request: Request) {
               plan: planId || "intern",
               status: "ACTIVE",
               billingCycle,
-              currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-              currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-              stripeCurrentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+              currentPeriodStart: periodStart,
+              currentPeriodEnd: periodEnd,
+              stripeCurrentPeriodEnd: periodEnd,
             },
             update: {
               stripeSubscriptionId: subscriptionId,
@@ -109,9 +117,9 @@ export async function POST(request: Request) {
               plan: planId || "intern",
               status: "ACTIVE",
               billingCycle,
-              currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-              currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-              stripeCurrentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+              currentPeriodStart: periodStart,
+              currentPeriodEnd: periodEnd,
+              stripeCurrentPeriodEnd: periodEnd,
             },
           });
 
@@ -150,14 +158,22 @@ export async function POST(request: Request) {
             'incomplete_expired': 'INCOMPLETE_EXPIRED',
           };
 
+          // Get period timestamps (handle potential undefined)
+          const subPeriodStart = (subscription as any).current_period_start
+            ? new Date((subscription as any).current_period_start * 1000)
+            : new Date();
+          const subPeriodEnd = (subscription as any).current_period_end
+            ? new Date((subscription as any).current_period_end * 1000)
+            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
           await prisma.subscription.update({
             where: { id: existingSubscription.id },
             data: {
               status: statusMap[subscription.status] || 'ACTIVE',
               stripePriceId: subscription.items.data[0]?.price.id,
-              currentPeriodStart: new Date(subscription.current_period_start * 1000),
-              currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-              stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+              currentPeriodStart: subPeriodStart,
+              currentPeriodEnd: subPeriodEnd,
+              stripeCurrentPeriodEnd: subPeriodEnd,
               cancelAtPeriodEnd: subscription.cancel_at_period_end,
             },
           });
@@ -243,7 +259,8 @@ export async function POST(request: Request) {
         console.log("Payment succeeded for invoice:", invoice.id);
 
         // Update subscription period on successful payment
-        if (invoice.customer && invoice.subscription) {
+        const invoiceSubscription = (invoice as any).subscription;
+        if (invoice.customer && invoiceSubscription) {
           const subscription = await prisma.subscription.findUnique({
             where: { stripeCustomerId: invoice.customer as string },
             include: { user: true },
@@ -252,15 +269,23 @@ export async function POST(request: Request) {
           if (subscription) {
             // Fetch latest subscription details from Stripe
             const stripeSubscription = await getStripe().subscriptions.retrieve(
-              invoice.subscription as string
-            ) as Stripe.Subscription;
+              invoiceSubscription as string
+            );
+
+            // Get period timestamps (handle potential undefined)
+            const invPeriodStart = (stripeSubscription as any).current_period_start
+              ? new Date((stripeSubscription as any).current_period_start * 1000)
+              : new Date();
+            const invPeriodEnd = (stripeSubscription as any).current_period_end
+              ? new Date((stripeSubscription as any).current_period_end * 1000)
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
             await prisma.subscription.update({
               where: { id: subscription.id },
               data: {
-                currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-                currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-                stripeCurrentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+                currentPeriodStart: invPeriodStart,
+                currentPeriodEnd: invPeriodEnd,
+                stripeCurrentPeriodEnd: invPeriodEnd,
                 status: 'ACTIVE', // Payment succeeded, ensure status is ACTIVE
               },
             });

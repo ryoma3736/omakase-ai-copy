@@ -7,24 +7,19 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  // For development with docker-compose PostgreSQL
-  const connectionString = process.env.DATABASE_URL || "";
+  const connectionString = process.env.DATABASE_URL;
 
-  // Check if using Prisma Postgres (prisma+postgres://) or standard PostgreSQL
-  if (connectionString.startsWith("prisma+postgres://")) {
-    // Prisma Postgres (Accelerate) - use accelerateUrl
-    return new PrismaClient({
-      log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-    });
-  } else {
-    // Standard PostgreSQL - use pg adapter
-    const pool = new Pool({ connectionString });
-    const adapter = new PrismaPg(pool);
-    return new PrismaClient({
-      adapter,
-      log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-    });
+  if (!connectionString) {
+    throw new Error("DATABASE_URL environment variable is not set");
   }
+
+  const pool = new Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
+
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

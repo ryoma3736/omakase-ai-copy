@@ -99,7 +99,7 @@ export class WebSpeechSynthesisProvider implements VoiceProvider {
         );
       };
 
-      this.synth.speak(utterance);
+      this.synth!.speak(utterance);
     });
   }
 
@@ -168,7 +168,7 @@ export class WebSpeechSynthesisProvider implements VoiceProvider {
 export class WebSpeechRecognitionProvider
   implements SpeechRecognitionProvider
 {
-  private recognition: SpeechRecognition | null = null;
+  private recognition: any = null;
   private isListening = false;
 
   public onResult?: (result: SpeechRecognitionResult) => void;
@@ -183,9 +183,8 @@ export class WebSpeechRecognitionProvider
       );
     }
 
-    // @ts-expect-error - webkitSpeechRecognition is not in TypeScript types
     const SpeechRecognitionConstructor =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     this.recognition = new SpeechRecognitionConstructor();
     this.setupEventHandlers();
@@ -262,12 +261,12 @@ export class WebSpeechRecognitionProvider
   private setupEventHandlers(): void {
     if (!this.recognition) return;
 
-    this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+    this.recognition.onresult = (event: any) => {
       const result = event.results[event.resultIndex];
       const transcript = result[0].transcript;
       const confidence = result[0].confidence;
 
-      const alternatives = Array.from(result).map((alt) => ({
+      const alternatives = Array.from(result).map((alt: any) => ({
         transcript: alt.transcript,
         confidence: alt.confidence,
       }));
@@ -282,7 +281,7 @@ export class WebSpeechRecognitionProvider
       this.onResult?.(recognitionResult);
     };
 
-    this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    this.recognition.onerror = (event: any) => {
       const error = new SpeechRecognitionError(
         `Recognition error: ${event.error}`,
         event.error.toUpperCase()
@@ -310,51 +309,11 @@ export function createWebSpeechRecognitionProvider(): SpeechRecognitionProvider 
 
 /**
  * TypeScript declarations for Web Speech API
+ * Note: Uses `any` to avoid conflicts with built-in DOM types
  */
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
-  }
-
-  interface SpeechRecognition extends EventTarget {
-    lang: string;
-    continuous: boolean;
-    interimResults: boolean;
-    maxAlternatives: number;
-    start(): void;
-    stop(): void;
-    abort(): void;
-    onresult: ((event: SpeechRecognitionEvent) => void) | null;
-    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-    onend: (() => void) | null;
-  }
-
-  interface SpeechRecognitionEvent extends Event {
-    resultIndex: number;
-    results: SpeechRecognitionResultList;
-  }
-
-  interface SpeechRecognitionResultList {
-    length: number;
-    item(index: number): SpeechRecognitionResult;
-    [index: number]: SpeechRecognitionResult;
-  }
-
-  interface SpeechRecognitionResult {
-    length: number;
-    item(index: number): SpeechRecognitionAlternative;
-    [index: number]: SpeechRecognitionAlternative;
-    isFinal: boolean;
-  }
-
-  interface SpeechRecognitionAlternative {
-    transcript: string;
-    confidence: number;
-  }
-
-  interface SpeechRecognitionErrorEvent extends Event {
-    error: string;
-    message: string;
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
   }
 }

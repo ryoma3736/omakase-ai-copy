@@ -2,10 +2,9 @@
  * Usage Tracking Utilities
  *
  * Tracks and enforces subscription-based usage limits:
- * - FREE: 100 chats/month, 10MB data
- * - INTERN: 1,000 chats/month, 100MB data
- * - ASSOCIATE: 10,000 chats/month, 1GB data
- * - PRINCIPAL: Unlimited chats, 10GB data
+ * - INTERN: 1,000 conversations/month, 100MB training data
+ * - ASSOCIATE: 10,000 conversations/month, 1GB training data
+ * - PRINCIPAL: Unlimited conversations, 10GB training data
  */
 
 import { prisma } from "./prisma";
@@ -14,13 +13,13 @@ export class UsageLimitError extends Error {
   public plan: string;
   public currentUsage: number;
   public limit: number;
-  public usageType: "chat" | "data";
+  public usageType: "conversation" | "data";
 
   constructor(
     plan: string,
     currentUsage: number,
     limit: number,
-    usageType: "chat" | "data"
+    usageType: "conversation" | "data"
   ) {
     super(`${usageType} usage limit exceeded for ${plan} plan`);
     this.name = "UsageLimitError";
@@ -33,20 +32,19 @@ export class UsageLimitError extends Error {
 
 /**
  * Subscription plan limits configuration
- * Based on Prisma schema SubscriptionPlan enum
  */
 export const PLAN_LIMITS = {
   INTERN: {
-    chatLimit: 1000,
-    dataLimitMB: 100,
+    conversationLimit: 1000,
+    dataLimitGB: 0.1, // 100MB
   },
   ASSOCIATE: {
-    chatLimit: 10000,
-    dataLimitMB: 1024, // 1GB
+    conversationLimit: 10000,
+    dataLimitGB: 1, // 1GB
   },
   PRINCIPAL: {
-    chatLimit: -1, // Unlimited
-    dataLimitMB: 10240, // 10GB
+    conversationLimit: -1, // Unlimited
+    dataLimitGB: 10, // 10GB
   },
 } as const;
 
@@ -61,16 +59,16 @@ export function getPlanLimits(plan: string) {
 }
 
 /**
- * Check if plan has unlimited chats
+ * Check if plan has unlimited conversations
  */
-export function hasUnlimitedChats(plan: string): boolean {
+export function hasUnlimitedConversations(plan: string): boolean {
   const limits = getPlanLimits(plan);
-  return limits.chatLimit === -1;
+  return limits.conversationLimit === -1;
 }
 
 /**
  * Get or create subscription for user
- * Creates default FREE plan if doesn't exist
+ * Creates default INTERN plan if doesn't exist
  */
 export async function getOrCreateSubscription(userId: string) {
   let subscription = await prisma.subscription.findUnique({
@@ -78,16 +76,18 @@ export async function getOrCreateSubscription(userId: string) {
   });
 
   if (!subscription) {
-    // Create default INTERN subscription
+    // Generate a placeholder stripeCustomerId for new subscriptions
+    const placeholderCustomerId = `cus_placeholder_${userId}`;
+
     subscription = await prisma.subscription.create({
       data: {
         userId,
-        plan: "INTERN", // Default plan
+        stripeCustomerId: placeholderCustomerId,
+        plan: "intern",
         status: "ACTIVE",
-        chatLimit: PLAN_LIMITS.INTERN.chatLimit,
-        dataLimitMB: PLAN_LIMITS.INTERN.dataLimitMB,
-        currentChatUsage: 0,
-        currentDataUsage: 0,
+        conversationsUsed: 0,
+        productsUsed: 0,
+        trainingDataUsedGB: 0,
         currentPeriodStart: new Date(),
         currentPeriodEnd: getNextMonthDate(),
       },
@@ -98,12 +98,12 @@ export async function getOrCreateSubscription(userId: string) {
 }
 
 /**
- * Check if user can make a chat request
+ * Check if user can make a conversation request
  * @param userId - User ID
  * @returns true if allowed
  * @throws UsageLimitError if limit exceeded
  */
-export async function checkChatUsage(userId: string): Promise<boolean> {
+export async function checkConversationUsage(userId: string): Promise<boolean> {
   const subscription = await getOrCreateSubscription(userId);
 
   // Check if billing period needs reset
@@ -116,17 +116,19 @@ export async function checkChatUsage(userId: string): Promise<boolean> {
   }
 
   // Check unlimited plans
-  if (hasUnlimitedChats(subscription.plan)) {
+  if (hasUnlimitedConversations(subscription.plan)) {
     return true;
   }
 
-  // Check chat limit
-  if (subscription.currentChatUsage >= subscription.chatLimit) {
+  const limits = getPlanLimits(subscription.plan);
+
+  // Check conversation limit
+  if (subscription.conversationsUsed >= limits.conversationLimit) {
     throw new UsageLimitError(
       subscription.plan,
-      subscription.currentChatUsage,
-      subscription.chatLimit,
-      "chat"
+      subscription.conversationsUsed,
+      limits.conversationLimit,
+      "conversation"
     );
   }
 
@@ -136,15 +138,16 @@ export async function checkChatUsage(userId: string): Promise<boolean> {
 /**
  * Check if user can upload data
  * @param userId - User ID
- * @param additionalMB - Additional data size in MB
+ * @param additionalGB - Additional data size in GB
  * @returns true if allowed
  * @throws UsageLimitError if limit exceeded
  */
 export async function checkDataUsage(
   userId: string,
-  additionalMB: number
+  additionalGB: number
 ): Promise<boolean> {
   const subscription = await getOrCreateSubscription(userId);
+  const limits = getPlanLimits(subscription.plan);
 
   // Check if billing period needs reset
   if (
@@ -156,14 +159,14 @@ export async function checkDataUsage(
   }
 
   // Calculate new total
-  const newTotal = subscription.currentDataUsage + additionalMB;
+  const newTotal = subscription.trainingDataUsedGB + additionalGB;
 
   // Check data limit
-  if (newTotal > subscription.dataLimitMB) {
+  if (newTotal > limits.dataLimitGB) {
     throw new UsageLimitError(
       subscription.plan,
-      subscription.currentDataUsage,
-      subscription.dataLimitMB,
+      subscription.trainingDataUsedGB,
+      limits.dataLimitGB,
       "data"
     );
   }
@@ -172,18 +175,18 @@ export async function checkDataUsage(
 }
 
 /**
- * Increment chat usage counter
+ * Increment conversation usage counter
  * @param userId - User ID
- * @param count - Number of chats to increment (default: 1)
+ * @param count - Number of conversations to increment (default: 1)
  */
-export async function incrementChatUsage(
+export async function incrementConversationUsage(
   userId: string,
   count: number = 1
 ): Promise<void> {
   await prisma.subscription.update({
     where: { userId },
     data: {
-      currentChatUsage: {
+      conversationsUsed: {
         increment: count,
       },
     },
@@ -193,17 +196,17 @@ export async function incrementChatUsage(
 /**
  * Increment data usage counter
  * @param userId - User ID
- * @param sizeMB - Data size in MB
+ * @param sizeGB - Data size in GB
  */
 export async function incrementDataUsage(
   userId: string,
-  sizeMB: number
+  sizeGB: number
 ): Promise<void> {
   await prisma.subscription.update({
     where: { userId },
     data: {
-      currentDataUsage: {
-        increment: sizeMB,
+      trainingDataUsedGB: {
+        increment: sizeGB,
       },
     },
   });
@@ -220,8 +223,9 @@ export async function resetMonthlyUsage(userId: string): Promise<void> {
   await prisma.subscription.update({
     where: { userId },
     data: {
-      currentChatUsage: 0,
-      currentDataUsage: 0,
+      conversationsUsed: 0,
+      productsUsed: 0,
+      trainingDataUsedGB: 0,
       currentPeriodStart: now,
       currentPeriodEnd: nextPeriod,
     },
@@ -238,18 +242,18 @@ export async function getUsageStats(userId: string) {
   return {
     plan: subscription.plan,
     status: subscription.status,
-    chat: {
-      current: subscription.currentChatUsage,
-      limit: limits.chatLimit === -1 ? "Unlimited" : limits.chatLimit,
+    conversations: {
+      current: subscription.conversationsUsed,
+      limit: limits.conversationLimit === -1 ? "Unlimited" : limits.conversationLimit,
       percentage:
-        limits.chatLimit === -1
+        limits.conversationLimit === -1
           ? 0
-          : (subscription.currentChatUsage / limits.chatLimit) * 100,
+          : (subscription.conversationsUsed / limits.conversationLimit) * 100,
     },
     data: {
-      current: subscription.currentDataUsage,
-      limit: limits.dataLimitMB,
-      percentage: (subscription.currentDataUsage / limits.dataLimitMB) * 100,
+      currentGB: subscription.trainingDataUsedGB,
+      limitGB: limits.dataLimitGB,
+      percentage: (subscription.trainingDataUsedGB / limits.dataLimitGB) * 100,
     },
     billingPeriod: {
       start: subscription.currentPeriodStart,
@@ -271,14 +275,10 @@ export async function upgradePlan(
   userId: string,
   newPlan: PlanType
 ): Promise<void> {
-  const limits = getPlanLimits(newPlan);
-
   await prisma.subscription.update({
     where: { userId },
     data: {
-      plan: newPlan,
-      chatLimit: limits.chatLimit === -1 ? 999999 : limits.chatLimit,
-      dataLimitMB: limits.dataLimitMB,
+      plan: newPlan.toLowerCase(),
     },
   });
 }
@@ -293,21 +293,21 @@ function getNextMonthDate(): Date {
 
 /**
  * Middleware helper for API routes
- * Checks and increments chat usage in one call
+ * Checks and increments conversation usage in one call
  */
-export async function withChatUsageCheck(
+export async function withConversationUsageCheck(
   userId: string
 ): Promise<Response | null> {
   try {
-    await checkChatUsage(userId);
-    await incrementChatUsage(userId);
+    await checkConversationUsage(userId);
+    await incrementConversationUsage(userId);
     return null; // Allow request
   } catch (error) {
     if (error instanceof UsageLimitError) {
       return new Response(
         JSON.stringify({
           error: "Usage limit exceeded",
-          message: `Your ${error.plan} plan allows ${error.limit} chats per month. You've used ${error.currentUsage}.`,
+          message: `Your ${error.plan} plan allows ${error.limit} conversations per month. You've used ${error.currentUsage}.`,
           plan: error.plan,
           currentUsage: error.currentUsage,
           limit: error.limit,
@@ -332,18 +332,18 @@ export async function withChatUsageCheck(
  */
 export async function withDataUsageCheck(
   userId: string,
-  sizeMB: number
+  sizeGB: number
 ): Promise<Response | null> {
   try {
-    await checkDataUsage(userId, sizeMB);
-    await incrementDataUsage(userId, sizeMB);
+    await checkDataUsage(userId, sizeGB);
+    await incrementDataUsage(userId, sizeGB);
     return null; // Allow request
   } catch (error) {
     if (error instanceof UsageLimitError) {
       return new Response(
         JSON.stringify({
           error: "Storage limit exceeded",
-          message: `Your ${error.plan} plan allows ${error.limit}MB of storage. You've used ${error.currentUsage}MB.`,
+          message: `Your ${error.plan} plan allows ${error.limit}GB of training data. You've used ${error.currentUsage}GB.`,
           plan: error.plan,
           currentUsage: error.currentUsage,
           limit: error.limit,
@@ -362,3 +362,8 @@ export async function withDataUsageCheck(
     throw error;
   }
 }
+
+// Alias for backward compatibility
+export const checkChatUsage = checkConversationUsage;
+export const incrementChatUsage = incrementConversationUsage;
+export const withChatUsageCheck = withConversationUsageCheck;
