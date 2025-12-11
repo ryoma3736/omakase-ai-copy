@@ -1,10 +1,13 @@
 /**
- * Gemini TTS API - 音声合成エンドポイント
- * Gemini 2.5のNative Audio機能を使用
+ * Gemini TTS API - 超高速音声合成エンドポイント
+ * omakase.aiより高速なTTSを実現
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// Edge Runtime有効化
+export const runtime = "edge";
 
 const genAI = new GoogleGenerativeAI(
   process.env.GOOGLE_GENERATIVE_AI_API_KEY || ""
@@ -70,11 +73,8 @@ export async function POST(request: NextRequest) {
       } as any,
     });
 
-    const result = await model.generateContent(`
-以下のテキストを自然な日本語で読み上げてください。感情を込めて、親しみやすく話してください。
-
-${text}
-`);
+    // シンプルなプロンプトで高速化
+    const result = await model.generateContent(text);
 
     const response = result.response;
 
@@ -90,7 +90,12 @@ ${text}
         // PCM to WAV変換
         const pcmBytes = Uint8Array.from(atob(audioData.data), c => c.charCodeAt(0));
         const wavBytes = pcmToWav(pcmBytes, 24000, 1, 16);
-        const wavBase64 = Buffer.from(wavBytes).toString("base64");
+        // Edge Runtimeでは Buffer.from が使えないので、別の方法でBase64エンコード
+        let binary = "";
+        for (let i = 0; i < wavBytes.length; i++) {
+          binary += String.fromCharCode(wavBytes[i]);
+        }
+        const wavBase64 = btoa(binary);
 
         return NextResponse.json({
           success: true,

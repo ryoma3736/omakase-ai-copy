@@ -1,17 +1,22 @@
 /**
- * Streaming Chat API - リアルタイムテキスト配信
- * Chat応答をストリーミングで返し、フロントで並列TTS生成可能に
+ * Streaming Chat API - 超高速リアルタイムテキスト配信
+ * omakase.aiより高速な応答を実現
  */
 
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// Edge Runtime有効化 - コールドスタート大幅削減
+export const runtime = "edge";
+
 const genAI = new GoogleGenerativeAI(
   process.env.GOOGLE_GENERATIVE_AI_API_KEY || ""
 );
 
-// 最適化: 短いプロンプトで高速応答
-const SYSTEM_PROMPT = `ECサイトの親切なAIアシスタント。簡潔に2文以内で回答。日本語。`;
+// 超高速化: 1文以内で即答
+const SYSTEM_PROMPT = `あなたはECショップの超高速AIアシスタントです。
+絶対に1文、30文字以内で即答。敬語で簡潔に。
+例: 「はい、在庫あります！」「おすすめは〇〇です！」`;
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -32,13 +37,15 @@ export async function POST(request: NextRequest) {
         const model = genAI.getGenerativeModel({
           model: "gemini-2.0-flash-exp",
           generationConfig: {
-            temperature: 0.3, // 低温で高速・確定的
-            maxOutputTokens: 100, // 短く制限
+            temperature: 0.1, // 超低温で最速・確定的
+            maxOutputTokens: 50, // 超短く制限（1文30文字程度）
+            topP: 0.8, // 高速サンプリング
+            topK: 10, // 候補絞り込み
           },
         });
 
-        // 会話履歴を最新3ターンに制限（高速化）
-        const recentHistory = history.slice(-6);
+        // 会話履歴を最新2ターンに制限（超高速化）
+        const recentHistory = history.slice(-4);
 
         // 会話履歴を構築
         const contents = [

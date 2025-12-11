@@ -1,10 +1,13 @@
 /**
- * Streaming TTS API - チャンク分割音声生成
- * 文単位で分割してSSEでストリーミング配信
+ * Streaming TTS API - 超高速チャンク分割音声生成
+ * omakase.aiより高速な音声合成を実現
  */
 
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// Edge Runtime有効化 - コールドスタート大幅削減
+export const runtime = "edge";
 
 const genAI = new GoogleGenerativeAI(
   process.env.GOOGLE_GENERATIVE_AI_API_KEY || ""

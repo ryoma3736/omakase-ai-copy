@@ -303,7 +303,7 @@ export default function DemoPage() {
     }
   }, [playNextInQueue]);
 
-  // メッセージ送信（ストリーミング対応）
+  // メッセージ送信（超高速統合API使用）
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -319,13 +319,17 @@ export default function DemoPage() {
     // アシスタントメッセージを空で追加
     setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
+    const startTime = performance.now();
+
     try {
-      const response = await fetch("/api/chat-stream", {
+      // 統合Chat+TTS APIを使用（Chat応答とTTS生成が並列実行）
+      const response = await fetch("/api/chat-with-tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage,
           history: messages.filter(m => m.role !== "assistant" || m.content !== ""),
+          voice: "Kore",
         }),
       });
 
@@ -348,19 +352,44 @@ export default function DemoPage() {
           try {
             const data = JSON.parse(line.slice(6));
 
-            if (data.type === "partial") {
-              // 部分テキスト - UI表示更新
+            if (data.type === "text") {
+              // 部分テキスト - UI表示を即座に更新
               fullResponse += data.text;
               setMessages(prev => {
                 const newMsgs = [...prev];
                 newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullResponse };
                 return newMsgs;
               });
-            } else if (data.type === "sentence") {
-              // 完成した文 - TTS生成開始
-              generateAndQueueTTS(data.text);
+              console.log(`📝 Text received in ${data.elapsed}ms`);
+            } else if (data.type === "audio") {
+              // 音声データ - 即座に再生開始
+              console.log(`🔊 Audio received in ${data.elapsed}ms`);
+              setIsTTSGenerating(false);
+
+              // 即座に再生
+              setIsSpeaking(true);
+              const audioBlob = new Blob(
+                [Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))],
+                { type: data.mimeType || "audio/wav" }
+              );
+              const audioUrl = URL.createObjectURL(audioBlob);
+              const audio = new Audio(audioUrl);
+              audioRef.current = audio;
+              audio.onended = () => {
+                setIsSpeaking(false);
+                URL.revokeObjectURL(audioUrl);
+                audioRef.current = null;
+              };
+              audio.onerror = () => {
+                setIsSpeaking(false);
+                URL.revokeObjectURL(audioUrl);
+                audioRef.current = null;
+              };
+              await audio.play();
             } else if (data.type === "done") {
-              setLastAssistantMessage(fullResponse);
+              setLastAssistantMessage(data.fullText || fullResponse);
+              const totalTime = performance.now() - startTime;
+              console.log(`✅ Total response time: ${totalTime.toFixed(0)}ms (Server: ${data.totalElapsed}ms)`);
             } else if (data.type === "error") {
               console.error("Stream error:", data.message);
             }

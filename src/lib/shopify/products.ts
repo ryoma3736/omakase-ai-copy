@@ -3,10 +3,8 @@
  * Handles syncing products from Shopify to local database
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import { ShopifyClient, ShopifyProduct } from '../shopify';
-
-const prisma = new PrismaClient();
 
 export interface SyncProductsOptions {
   agentId: string;
