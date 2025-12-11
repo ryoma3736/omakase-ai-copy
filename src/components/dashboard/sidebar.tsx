@@ -11,6 +11,7 @@ import {
   Settings,
   CreditCard,
   LogOut,
+  Code,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ const navigation = [
   { name: "ダッシュボード", href: "/dashboard", icon: LayoutDashboard },
   { name: "エージェント", href: "/dashboard/agents", icon: Bot },
   { name: "会話履歴", href: "/dashboard/conversations", icon: MessageSquare },
+  { name: "ウィジェット", href: "/dashboard/widget", icon: Code },
   { name: "分析", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "プラン・請求", href: "/dashboard/billing", icon: CreditCard },
   { name: "設定", href: "/dashboard/settings", icon: Settings },
