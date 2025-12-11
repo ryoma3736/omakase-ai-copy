@@ -1,0 +1,278 @@
+// Omakase AI Clone - Database Schema
+// Prisma schema for EC AI Agent platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// Auth Models (NextAuth.js compatible)
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// Core Models
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts     Account[]
+  sessions     Session[]
+  agents       Agent[]
+  subscription Subscription?
+}
+
+model Agent {
+  id           String   @id @default(cuid())
+  name         String
+  websiteUrl   String
+  description  String?
+  isActive     Boolean  @default(true)
+  widgetConfig Json?    // Widget customization settings
+  personality  Json?    // Personality settings (tone, style, etc.)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  knowledgeBase KnowledgeBase[]
+  conversations Conversation[]
+  products      Product[]
+  analytics     AgentAnalytics[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model KnowledgeBase {
+  id       String            @id @default(cuid())
+  type     KnowledgeBaseType
+  title    String
+  content  String            @db.Text
+  metadata Json?             // File metadata, URL info, etc.
+  status   ProcessingStatus  @default(PENDING)
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+}
+
+enum KnowledgeBaseType {
+  URL
+  PDF
+  CSV
+  TEXT
+  MARKDOWN
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  READY
+  ERROR
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  price       Decimal? @db.Decimal(10, 2)
+  currency    String   @default("JPY")
+  imageUrl    String?
+  productUrl  String?
+  category    String?
+  features    String[] // Array of feature strings
+  metadata    Json?    // Additional product data
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  recommendations ProductRecommendation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([category])
+}
+
+// ============================================
+// Conversation Models
+// ============================================
+
+model Conversation {
+  id         String             @id @default(cuid())
+  sessionId  String             // Anonymous session identifier
+  status     ConversationStatus @default(ACTIVE)
+  metadata   Json?              // Device info, referrer, etc.
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  messages        Message[]
+  recommendations ProductRecommendation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([sessionId])
+}
+
+enum ConversationStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+model Message {
+  id      String      @id @default(cuid())
+  role    MessageRole
+  content String      @db.Text
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model ProductRecommendation {
+  id        String  @id @default(cuid())
+  score     Float?  // Relevance score
+  clicked   Boolean @default(false)
+  purchased Boolean @default(false)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([conversationId])
+}
+
+// ============================================
+// Analytics Models
+// ============================================
+
+model AgentAnalytics {
+  id   String   @id @default(cuid())
+  date DateTime @db.Date
+
+  // Metrics
+  totalConversations   Int @default(0)
+  uniqueVisitors       Int @default(0)
+  totalMessages        Int @default(0)
+  avgConversationTime  Int @default(0) // In seconds
+  productClicks        Int @default(0)
+  conversions          Int @default(0)
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, date])
+  @@index([agentId])
+  @@index([date])
+}
+
+// ============================================
+// Subscription & Billing Models
+// ============================================
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  plan                 SubscriptionPlan   @default(INTERN)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+
+  // Usage limits
+  chatLimit       Int @default(100)  // Monthly chat limit
+  dataLimitMB     Int @default(100)  // Storage limit in MB
+  currentChatUsage Int @default(0)
+  currentDataUsage Int @default(0)
+
+  // Billing period
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum SubscriptionPlan {
+  INTERN     // 100 chats, 0.1GB
+  ASSOCIATE  // 1000 chats, 1GB
+  PRINCIPAL  // 5000 chats, 5GB
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
