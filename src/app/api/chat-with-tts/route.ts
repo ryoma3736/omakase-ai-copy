@@ -80,12 +80,14 @@ async function generateTTS(text: string, voice: string): Promise<string | null> 
       if (isPcm) {
         const pcmBytes = Uint8Array.from(atob(audioData.data), c => c.charCodeAt(0));
         const wavBytes = pcmToWav(pcmBytes, 24000);
-        // Edge Runtimeでは Buffer.from が使えないので、別の方法でBase64エンコード
-        let binary = "";
-        for (let i = 0; i < wavBytes.length; i++) {
-          binary += String.fromCharCode(wavBytes[i]);
+        // 最適化: チャンク処理でO(n)に改善
+        const CHUNK_SIZE = 32768;
+        let result = "";
+        for (let i = 0; i < wavBytes.length; i += CHUNK_SIZE) {
+          const chunk = wavBytes.subarray(i, Math.min(i + CHUNK_SIZE, wavBytes.length));
+          result += String.fromCharCode.apply(null, Array.from(chunk));
         }
-        return btoa(binary);
+        return btoa(result);
       }
 
       return audioData.data;
