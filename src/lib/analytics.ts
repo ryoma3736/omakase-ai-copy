@@ -1,4 +1,7 @@
 import { prisma } from "./prisma";
+import { analyticsTracker } from "./analytics/tracker";
+import { extractTopQuestions } from "./analytics/conversation";
+import { Lead } from "@/types/analytics";
 
 export interface AnalyticsData {
   totalConversations: number;
@@ -282,5 +285,127 @@ export async function recordDailyAnalytics(
       productClicks: { increment: metrics.productClicks || 0 },
       conversions: { increment: metrics.conversions || 0 },
     },
+  });
+}
+
+/**
+ * Create or update a lead
+ */
+export async function createLead(
+  lead: Omit<Lead, "id" | "createdAt" | "updatedAt">
+): Promise<Lead> {
+  const createdLead = await prisma.lead.create({
+    data: {
+      agentId: lead.agentId,
+      email: lead.email,
+      name: lead.name,
+      phone: lead.phone,
+      score: lead.score,
+      source: lead.source,
+      conversationId: lead.conversationId,
+      metadata: lead.metadata || {},
+    },
+  });
+
+  return {
+    id: createdLead.id,
+    agentId: createdLead.agentId,
+    email: createdLead.email || undefined,
+    name: createdLead.name || undefined,
+    phone: createdLead.phone || undefined,
+    score: createdLead.score,
+    source: createdLead.source as "widget" | "form" | "conversation",
+    conversationId: createdLead.conversationId || undefined,
+    metadata: createdLead.metadata as Record<string, any>,
+    createdAt: createdLead.createdAt,
+    updatedAt: createdLead.updatedAt,
+  };
+}
+
+/**
+ * Get leads for an agent
+ */
+export async function getLeads(
+  agentId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+    minScore?: number;
+  }
+): Promise<Lead[]> {
+  const leads = await prisma.lead.findMany({
+    where: {
+      agentId,
+      ...(options?.minScore && { score: { gte: options.minScore } }),
+    },
+    orderBy: [{ score: "desc" }, { createdAt: "desc" }],
+    take: options?.limit || 50,
+    skip: options?.offset || 0,
+  });
+
+  return leads.map((lead) => ({
+    id: lead.id,
+    agentId: lead.agentId,
+    email: lead.email || undefined,
+    name: lead.name || undefined,
+    phone: lead.phone || undefined,
+    score: lead.score,
+    source: lead.source as "widget" | "form" | "conversation",
+    conversationId: lead.conversationId || undefined,
+    metadata: lead.metadata as Record<string, any>,
+    createdAt: lead.createdAt,
+    updatedAt: lead.updatedAt,
+  }));
+}
+
+/**
+ * Calculate lead score based on conversation data
+ */
+export async function calculateLeadScore(
+  conversationId: string
+): Promise<number> {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      messages: true,
+      recommendations: {
+        include: {
+          product: true,
+        },
+      },
+    },
+  });
+
+  if (!conversation) {
+    return 0;
+  }
+
+  let score = 0;
+
+  // Message engagement (max 30 points)
+  const messageCount = conversation.messages.length;
+  score += Math.min(messageCount * 3, 30);
+
+  // Product clicks (max 25 points)
+  const clickedProducts = conversation.recommendations.filter((r) => r.clicked);
+  score += Math.min(clickedProducts.length * 5, 25);
+
+  // Purchases (max 45 points)
+  const purchases = conversation.recommendations.filter((r) => r.purchased);
+  score += Math.min(purchases.length * 15, 45);
+
+  return Math.min(score, 100);
+}
+
+/**
+ * Update lead score
+ */
+export async function updateLeadScore(
+  leadId: string,
+  score: number
+): Promise<void> {
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { score: Math.min(Math.max(score, 0), 100) }, // Clamp between 0-100
   });
 }

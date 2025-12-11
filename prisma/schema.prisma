@@ -85,6 +85,8 @@ model Agent {
   conversations     Conversation[]
   products          Product[]
   analytics         AgentAnalytics[]
+  analyticsEvents   AnalyticsEvent[]
+  leads             Lead[]
   shopifyStore      ShopifyStore?
 
   createdAt DateTime @default(now())
@@ -237,6 +239,39 @@ model AgentAnalytics {
   @@unique([agentId, date])
   @@index([agentId])
   @@index([date])
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  agentId    String
+  sessionId  String
+  type       String   // 'conversation_start', 'message_sent', 'product_clicked', 'checkout', 'lead_captured'
+  properties Json
+  userId     String?
+  createdAt  DateTime @default(now())
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, type])
+  @@index([agentId, createdAt])
+  @@index([sessionId])
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  agentId        String
+  email          String?
+  name           String?
+  phone          String?
+  score          Int      @default(0)
+  source         String   // 'widget', 'form', 'conversation'
+  conversationId String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([email])
 }
 
 // ============================================
