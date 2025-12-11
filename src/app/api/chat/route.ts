@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { chatStream, type ChatMessage } from "@/lib/claude";
+import {
+  createChatClient,
+  Message,
+  ProviderType,
+  ChatContext,
+  createContext,
+} from "@/lib/chat";
 import {
   generateSystemPrompt,
   getDefaultPersonality,
@@ -14,12 +20,13 @@ interface ChatRequestBody {
   message: string;
   conversationId?: string;
   sessionId?: string;
+  provider?: ProviderType; // Allow client to specify provider
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequestBody = await request.json();
-    const { agentId, message, conversationId, sessionId } = body;
+    const { agentId, message, conversationId, sessionId, provider = "claude" } = body;
 
     if (!agentId || !message) {
       return new Response(
@@ -84,12 +91,33 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Build chat history
-    const chatHistory: ChatMessage[] = conversation.messages.map((msg) => ({
-      role: msg.role === "USER" ? "user" : "assistant",
-      content: msg.content,
-    }));
-    chatHistory.push({ role: "user", content: message });
+    // Initialize chat client with provider
+    const chatClient = createChatClient({
+      provider,
+      fallbackProvider: provider === "claude" ? "openai" : "claude",
+      defaultOptions: {
+        temperature: 0.7,
+        maxTokens: 4096,
+      },
+    });
+
+    // Build chat history using context manager
+    const context = createContext({
+      maxMessages: 50,
+      maxTokens: 100000,
+      preserveSystemMessage: true,
+    });
+
+    // Add conversation history
+    conversation.messages.forEach((msg) => {
+      context.addMessage({
+        role: msg.role === "USER" ? "user" : "assistant",
+        content: msg.content,
+      });
+    });
+
+    // Add current user message
+    context.addMessage({ role: "user", content: message });
 
     // Generate system prompt
     const personality = (agent.personality as unknown as PersonalityConfig) || getDefaultPersonality();
@@ -99,6 +127,9 @@ export async function POST(request: NextRequest) {
       knowledgeBase: agent.knowledgeBase,
       personality,
     });
+
+    // Get messages with system prompt
+    const messages = context.getMessagesWithSystem(systemPrompt);
 
     // Create streaming response
     const encoder = new TextEncoder();
@@ -114,12 +145,13 @@ export async function POST(request: NextRequest) {
                 type: "metadata",
                 conversationId: conversation.id,
                 sessionId: currentSessionId,
+                provider: chatClient.getProviderType(),
               })}\n\n`
             )
           );
 
-          // Stream Claude response
-          for await (const chunk of chatStream(chatHistory, systemPrompt)) {
+          // Stream response from chat provider
+          for await (const chunk of chatClient.chatStream(messages)) {
             fullResponse += chunk;
             controller.enqueue(
               encoder.encode(
