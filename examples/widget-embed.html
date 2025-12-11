@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Omakase AI Widget - Integration Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 16px;
+    }
+
+    .subtitle {
+      font-size: 1.25rem;
+      color: #666;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 60px 40px;
+      border-radius: 16px;
+      margin-bottom: 60px;
+      text-align: center;
+    }
+
+    .hero h2 {
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+
+    .hero p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      margin-bottom: 60px;
+    }
+
+    .feature {
+      background: #f9fafb;
+      padding: 30px;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .feature h3 {
+      font-size: 1.5rem;
+      color: #1a1a1a;
+      margin-bottom: 12px;
+    }
+
+    .feature p {
+      color: #666;
+      font-size: 1rem;
+    }
+
+    .code-block {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 24px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 20px 0;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .code-block code {
+      white-space: pre;
+    }
+
+    .note {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 16px 20px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+
+    .note strong {
+      color: #92400e;
+    }
+
+    .cta {
+      text-align: center;
+      padding: 40px;
+      background: #f3f4f6;
+      border-radius: 12px;
+      margin-top: 60px;
+    }
+
+    .cta h3 {
+      font-size: 1.75rem;
+      margin-bottom: 20px;
+    }
+
+    .cta button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .cta button:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    footer {
+      text-align: center;
+      padding: 40px 0 20px;
+      color: #666;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 60px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Omakase AI Widget</h1>
+    <p class="subtitle">AIチャットボットをあなたのサイトに簡単に埋め込み</p>
+  </header>
+
+  <div class="hero">
+    <h2>AIアシスタントで顧客体験を向上</h2>
+    <p>
+      Omakase AIウィジェットを使えば、数行のコードであなたのECサイトに
+      高度なAIチャットボットを追加できます。
+    </p>
+  </div>
+
+  <section>
+    <h2>✨ 主な機能</h2>
+    <div class="features">
+      <div class="feature">
+        <h3>🎨 カスタマイズ可能</h3>
+        <p>ブランドカラー、位置、テーマなど、サイトに合わせて自由にカスタマイズできます。</p>
+      </div>
+      <div class="feature">
+        <h3>💬 リアルタイムチャット</h3>
+        <p>ストリーミングレスポンスで、自然な会話体験を提供します。</p>
+      </div>
+      <div class="feature">
+        <h3>🛍️ 商品レコメンド</h3>
+        <p>AIが顧客の要望に応じて最適な商品を自動で提案します。</p>
+      </div>
+      <div class="feature">
+        <h3>📊 アナリティクス</h3>
+        <p>会話データを分析し、顧客インサイトを可視化します。</p>
+      </div>
+      <div class="feature">
+        <h3>🚀 簡単導入</h3>
+        <p>スクリプトタグを追加するだけで、すぐに利用開始できます。</p>
+      </div>
+      <div class="feature">
+        <h3>🔒 セキュア</h3>
+        <p>エンタープライズグレードのセキュリティで顧客情報を保護します。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>📦 導入方法</h2>
+
+    <h3>ステップ 1: スクリプトを取得</h3>
+    <p>Omakase AIダッシュボードから、あなたのエージェントIDを取得します。</p>
+
+    <h3>ステップ 2: HTMLに埋め込み</h3>
+    <p>取得したコードを、あなたのウェブサイトの<code>&lt;/body&gt;</code>タグの直前に貼り付けます。</p>
+
+    <div class="code-block"><code>&lt;!-- Omakase AI Widget --&gt;
+&lt;script&gt;
+  (function(w,d,s,l,i){
+    w['__OMAKASE_LOADER_INITIALIZED__']=true;
+    w['OmakaseWidget']=i;
+    w[i]=w[i]||function(){(w[i].q=w[i].q||[]).push(arguments)};
+    var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s);j.async=true;
+    j.src='https://widget.omakase.ai/widget/loader.js?id='+l;
+    f.parentNode.insertBefore(j,f);
+  })(window,document,'script','YOUR_AGENT_ID','omakase');
+&lt;/script&gt;
+
+&lt;!-- Optional: Load base widget script --&gt;
+&lt;script src="https://widget.omakase.ai/widget.js"&gt;&lt;/script&gt;</code></div>
+
+    <div class="note">
+      <strong>注意:</strong> <code>YOUR_AGENT_ID</code>を実際のエージェントIDに置き換えてください。
+    </div>
+
+    <h3>ステップ 3: カスタマイズ (オプション)</h3>
+    <p>ウィジェットの見た目や動作をカスタマイズできます。</p>
+
+    <div class="code-block"><code>&lt;script&gt;
+  // Widget初期化後に呼び出し
+  window.omakase('config', {
+    primaryColor: '#667eea',
+    position: 'bottom-right',
+    theme: 'light',
+    showBranding: true
+  });
+&lt;/script&gt;</code></div>
+  </section>
+
+  <section>
+    <h2>🎯 カスタマイズオプション</h2>
+
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <thead style="background: #f3f4f6;">
+        <tr>
+          <th style="padding: 12px; text-align: left; border: 1px solid #e5e7eb;">オプション</th>
+          <th style="padding: 12px; text-align: left; border: 1px solid #e5e7eb;">型</th>
+          <th style="padding: 12px; text-align: left; border: 1px solid #e5e7eb;">デフォルト</th>
+          <th style="padding: 12px; text-align: left; border: 1px solid #e5e7eb;">説明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;"><code>primaryColor</code></td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">string</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">#6366f1</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">メインカラー（HEX形式）</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;"><code>position</code></td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">string</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">bottom-right</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">表示位置 (bottom-right / bottom-left)</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;"><code>theme</code></td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">string</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">light</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">テーマ (light / dark)</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;"><code>showBranding</code></td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">boolean</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">true</td>
+          <td style="padding: 12px; border: 1px solid #e5e7eb;">"Powered by Omakase.ai" 表示</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="cta">
+    <h3>今すぐ始めよう！</h3>
+    <p>右下のチャットボタンをクリックして、実際の動作を確認してください。</p>
+    <button onclick="alert('Omakase AIダッシュボードにアクセスして、エージェントIDを取得してください！')">
+      ダッシュボードへ
+    </button>
+  </div>
+
+  <footer>
+    <p>© 2025 Omakase.ai - All rights reserved</p>
+    <p style="margin-top: 8px; font-size: 0.9rem;">
+      <a href="https://omakase.ai/docs" style="color: #667eea; text-decoration: none;">ドキュメント</a> |
+      <a href="https://omakase.ai/support" style="color: #667eea; text-decoration: none;">サポート</a> |
+      <a href="https://omakase.ai/terms" style="color: #667eea; text-decoration: none;">利用規約</a>
+    </p>
+  </footer>
+
+  <!-- ============================= -->
+  <!-- Omakase AI Widget Integration -->
+  <!-- ============================= -->
+
+  <!-- Option 1: Using loader.js (Recommended for production) -->
+  <!--
+  <script>
+    (function(w,d,s,l,i){
+      w['__OMAKASE_LOADER_INITIALIZED__']=true;
+      w['OmakaseWidget']=i;
+      w[i]=w[i]||function(){(w[i].q=w[i].q||[]).push(arguments)};
+      var f=d.getElementsByTagName(s)[0],
+      j=d.createElement(s);j.async=true;
+      j.src='http://localhost:3000/widget/loader.js?id=YOUR_AGENT_ID';
+      f.parentNode.insertBefore(j,f);
+    })(window,document,'script','YOUR_AGENT_ID','omakase');
+  </script>
+  -->
+
+  <!-- Option 2: Direct widget.js (For testing) -->
+  <script src="/widget.js"></script>
+  <script>
+    // Initialize widget with test configuration
+    if (window.OmakaseWidget) {
+      window.OmakaseWidget.init({
+        agentId: 'test-agent-123',
+        agentName: 'おまかせAI',
+        position: 'bottom-right',
+        theme: 'light',
+        primaryColor: '#667eea',
+        welcomeMessage: 'こんにちは！何かお探しですか？',
+        apiBaseUrl: window.location.origin
+      });
+    }
+  </script>
+</body>
+</html>

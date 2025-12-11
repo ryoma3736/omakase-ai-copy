@@ -4,14 +4,28 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MessageSquare, X, Send, Loader2, Minimize2 } from "lucide-react";
+import { Send, Loader2, Minimize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FloatingButton } from "./FloatingButton";
+import { ProductList } from "./ProductCard";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  products?: Product[];
+}
+
+interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  currency: string;
+  imageUrl?: string;
+  productUrl?: string;
+  category?: string;
 }
 
 interface ChatWidgetProps {
@@ -21,6 +35,8 @@ interface ChatWidgetProps {
   position?: "bottom-right" | "bottom-left";
   theme?: "light" | "dark";
   primaryColor?: string;
+  showBranding?: boolean;
+  enableProductRecommendations?: boolean;
 }
 
 export function ChatWidget({
@@ -30,11 +46,15 @@ export function ChatWidget({
   position = "bottom-right",
   theme = "light",
   primaryColor = "#6366f1",
+  showBranding = true,
+  enableProductRecommendations = true,
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [sessionId] = useState(() => crypto.randomUUID());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -79,15 +99,15 @@ export function ChatWidget({
     setIsLoading(true);
 
     try {
+      // Send only the new message + conversationId (not full history)
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           agentId,
-          messages: [...messages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          message: userMessage.content,
+          conversationId: conversationId || undefined,
+          sessionId,
         }),
       });
 
@@ -121,7 +141,25 @@ export function ChatWidget({
 
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.content) {
+
+                // Handle metadata (conversationId)
+                if (parsed.type === "metadata" && parsed.conversationId) {
+                  setConversationId(parsed.conversationId);
+                }
+
+                // Handle message content
+                if (parsed.type === "message" && parsed.content) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessage.id
+                        ? { ...m, content: m.content + parsed.content }
+                        : m
+                    )
+                  );
+                }
+
+                // Legacy support: plain content field
+                if (parsed.content && !parsed.type) {
                   setMessages((prev) =>
                     prev.map((m) =>
                       m.id === assistantMessage.id
@@ -235,30 +273,46 @@ export function ChatWidget({
             )}
           >
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  "flex",
-                  message.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
+              <div key={message.id} className="space-y-2">
                 <div
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
-                    message.role === "user"
-                      ? "bg-primary text-white rounded-br-md"
-                      : theme === "light"
-                      ? "bg-white text-gray-900 shadow-sm rounded-bl-md"
-                      : "bg-gray-700 text-white rounded-bl-md"
+                    "flex",
+                    message.role === "user" ? "justify-end" : "justify-start"
                   )}
-                  style={
-                    message.role === "user"
-                      ? { backgroundColor: primaryColor }
-                      : undefined
-                  }
                 >
-                  {message.content}
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
+                      message.role === "user"
+                        ? "bg-primary text-white rounded-br-md"
+                        : theme === "light"
+                        ? "bg-white text-gray-900 shadow-sm rounded-bl-md"
+                        : "bg-gray-700 text-white rounded-bl-md"
+                    )}
+                    style={
+                      message.role === "user"
+                        ? { backgroundColor: primaryColor }
+                        : undefined
+                    }
+                  >
+                    {message.content}
+                  </div>
                 </div>
+
+                {/* Product Recommendations */}
+                {message.role === "assistant" &&
+                  message.products &&
+                  message.products.length > 0 &&
+                  enableProductRecommendations && (
+                    <div className="pl-2">
+                      <ProductList
+                        products={message.products}
+                        primaryColor={primaryColor}
+                        compact={true}
+                        maxItems={3}
+                      />
+                    </div>
+                  )}
               </div>
             ))}
             {isLoading && (
@@ -281,49 +335,68 @@ export function ChatWidget({
           {/* Input */}
           <div
             className={cn(
-              "p-4 border-t",
+              "border-t",
               theme === "light" ? "border-gray-200 bg-white" : "border-gray-700 bg-gray-900"
             )}
           >
-            <div className="flex items-center gap-2">
-              <Input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="メッセージを入力..."
-                className={cn(
-                  "flex-1",
-                  theme === "dark" && "bg-gray-800 border-gray-700"
-                )}
-                disabled={isLoading}
-              />
-              <Button
-                size="icon"
-                onClick={sendMessage}
-                disabled={!input.trim() || isLoading}
-                style={{ backgroundColor: primaryColor }}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="p-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="メッセージを入力..."
+                  className={cn(
+                    "flex-1",
+                    theme === "dark" && "bg-gray-800 border-gray-700"
+                  )}
+                  disabled={isLoading}
+                />
+                <Button
+                  size="icon"
+                  onClick={sendMessage}
+                  disabled={!input.trim() || isLoading}
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
+
+            {/* Branding */}
+            {showBranding && (
+              <div
+                className={cn(
+                  "px-4 py-2 text-center text-xs border-t",
+                  theme === "light"
+                    ? "text-gray-500 border-gray-100"
+                    : "text-gray-400 border-gray-800"
+                )}
+              >
+                Powered by{" "}
+                <a
+                  href="https://omakase.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium hover:underline"
+                  style={{ color: primaryColor }}
+                >
+                  Omakase.ai
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Toggle Button */}
-      <Button
-        size="icon"
-        className="h-14 w-14 rounded-full shadow-lg"
-        style={{ backgroundColor: primaryColor }}
+      {/* Floating Button */}
+      <FloatingButton
+        isOpen={isOpen}
         onClick={() => setIsOpen(!isOpen)}
-      >
-        {isOpen ? (
-          <X className="h-6 w-6" />
-        ) : (
-          <MessageSquare className="h-6 w-6" />
-        )}
-      </Button>
+        primaryColor={primaryColor}
+        position={position}
+      />
     </div>
   );
 }
