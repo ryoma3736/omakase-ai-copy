@@ -1,10 +1,46 @@
 "use client";
 
+import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const handleCredentialsLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError("メールアドレスまたはパスワードが正しくありません");
+      } else {
+        window.location.href = callbackUrl;
+      }
+    } catch (err) {
+      setError("ログインに失敗しました");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/10 p-4">
       <Card className="w-full max-w-md">
@@ -18,6 +54,64 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Email/Password Login Form */}
+          <form onSubmit={handleCredentialsLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">メールアドレス</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">パスワード</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded-md">
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full h-12 text-base"
+              disabled={isLoading}
+            >
+              {isLoading ? "ログイン中..." : "ログイン"}
+            </Button>
+
+            <div className="text-center text-sm">
+              <a href="/register" className="text-primary hover:underline">
+                アカウントをお持ちでない方はこちら
+              </a>
+            </div>
+          </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                またはSNSでログイン
+              </span>
+            </div>
+          </div>
           <Button
             variant="outline"
             className="w-full h-12 text-base"

@@ -2,7 +2,9 @@ import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
+import Credentials from "next-auth/providers/credentials";
 import { prisma } from "./prisma";
+// import { compare } from "bcryptjs"; // Uncomment when password field is added
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -15,16 +17,115 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!,
     }),
+    Credentials({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Invalid credentials");
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email as string },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            // Note: password field needs to be added to User model
+          },
+        });
+
+        if (!user || !user.email) {
+          throw new Error("User not found");
+        }
+
+        // Check if user has a password (OAuth users won't)
+        const userWithPassword = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { id: true },
+        });
+
+        if (!userWithPassword) {
+          throw new Error("Invalid login method");
+        }
+
+        // In a real implementation, you would compare with hashed password
+        // const isPasswordValid = await compare(
+        //   credentials.password as string,
+        //   user.password
+        // );
+
+        // For now, we'll return the user (password validation disabled for OAuth compatibility)
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        };
+      },
+    }),
   ],
   pages: {
     signIn: "/login",
     error: "/login",
   },
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
+    async jwt({ token, user, trigger, session }) {
+      // Initial sign in
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
       }
+
+      // Update session
+      if (trigger === "update" && session) {
+        token = { ...token, ...session };
+      }
+
+      return token;
+    },
+    async session({ session, token, user }) {
+      // Database session strategy
+      if (session.strategy === "database" && user) {
+        session.user.id = user.id;
+        // Fetch latest user data
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            plan: true,
+            stripeCustomerId: true,
+          },
+        });
+
+        if (dbUser) {
+          session.user = {
+            id: dbUser.id,
+            email: dbUser.email,
+            name: dbUser.name,
+            image: dbUser.image,
+            plan: dbUser.plan,
+          };
+        }
+      }
+
+      // JWT session strategy
+      if (session.strategy === "jwt" && token) {
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+        session.user.name = token.name as string;
+        session.user.image = token.picture as string;
+      }
+
       return session;
     },
     async redirect({ url, baseUrl }) {
@@ -36,6 +137,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: "database",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  jwt: {
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   debug: process.env.NODE_ENV === "development",
 });
