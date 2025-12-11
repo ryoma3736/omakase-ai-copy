@@ -1,121 +1,112 @@
 /**
- * Next.js Middleware for Authentication, Rate Limiting and API Protection
+ * Next.js Middleware for Rate Limiting and API Protection
  *
- * Applies to:
- * - Protected routes (dashboard, settings)
- * - API routes (rate limiting, CORS, security)
+ * Note: Authentication is handled in individual API routes and pages
+ * to avoid Edge Runtime limitations with crypto module
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { apiLimiter, getClientIdentifier } from "./lib/rate-limit";
-import { auth } from "./lib/auth";
+
+// Simple in-memory rate limiter for Edge Runtime
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT = 60; // requests per window
+const WINDOW_MS = 60 * 1000; // 1 minute
+
+function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; reset: number } {
+  const now = Date.now();
+  const record = rateLimitMap.get(identifier);
+
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(identifier, { count: 1, resetTime: now + WINDOW_MS });
+    return { allowed: true, remaining: RATE_LIMIT - 1, reset: now + WINDOW_MS };
+  }
+
+  if (record.count >= RATE_LIMIT) {
+    return { allowed: false, remaining: 0, reset: record.resetTime };
+  }
+
+  record.count++;
+  return { allowed: true, remaining: RATE_LIMIT - record.count, reset: record.resetTime };
+}
+
+function getClientIdentifier(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0] ?? request.headers.get("x-real-ip") ?? "anonymous";
+  return ip;
+}
 
 /**
  * Main middleware function
- * Runs before routes are executed
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Authentication check for protected routes
+  // Skip middleware for static assets
   if (
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/api/agents") ||
-    pathname.startsWith("/api/conversations") ||
-    pathname.startsWith("/api/analytics")
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.includes(".")
   ) {
-    const session = await auth();
+    return NextResponse.next();
+  }
 
-    if (!session) {
-      // Redirect to login for protected pages
-      if (!pathname.startsWith("/api/")) {
-        const loginUrl = new URL("/login", request.url);
-        loginUrl.searchParams.set("callbackUrl", pathname);
-        return NextResponse.redirect(loginUrl);
-      }
+  // Rate limiting for API routes only
+  if (pathname.startsWith("/api/")) {
+    // Skip rate limiting for health check
+    if (pathname === "/api/health") {
+      return NextResponse.next();
+    }
 
-      // Return 401 for protected API routes
+    const identifier = getClientIdentifier(request);
+    const { allowed, remaining, reset } = checkRateLimit(identifier);
+
+    if (!allowed) {
       return new NextResponse(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({
+          error: "Too many requests",
+          message: "Rate limit exceeded. Please try again later.",
+        }),
         {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "60",
+            "X-RateLimit-Limit": String(RATE_LIMIT),
+            "X-RateLimit-Remaining": "0",
+          },
         }
       );
     }
+
+    const response = NextResponse.next();
+
+    // Add rate limit headers
+    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT));
+    response.headers.set("X-RateLimit-Remaining", String(remaining));
+    response.headers.set("X-RateLimit-Reset", String(Math.floor(reset / 1000)));
+
+    // Security headers
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    response.headers.set("X-Frame-Options", "DENY");
+    response.headers.set("X-XSS-Protection", "1; mode=block");
+
+    // CORS for widget/chat API
+    if (pathname.startsWith("/api/chat") || pathname.startsWith("/api/v1/")) {
+      response.headers.set("Access-Control-Allow-Origin", "*");
+      response.headers.set(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, DELETE, OPTIONS"
+      );
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization"
+      );
+    }
+
+    return response;
   }
 
-  // 2. Rate limiting for API routes
-  if (!pathname.startsWith("/api/")) {
-    return NextResponse.next();
-  }
-
-  // Skip rate limiting for health check endpoints
-  if (request.nextUrl.pathname === "/api/health") {
-    return NextResponse.next();
-  }
-
-  // Apply rate limiting
-  const identifier = getClientIdentifier(request);
-
-  try {
-    await apiLimiter.check(identifier);
-  } catch (error) {
-    // Rate limit exceeded
-    return new NextResponse(
-      JSON.stringify({
-        error: "Too many requests",
-        message: "Rate limit exceeded. Please try again later.",
-      }),
-      {
-        status: 429,
-        headers: {
-          "Content-Type": "application/json",
-          "Retry-After": "60",
-          "X-RateLimit-Limit": "60",
-          "X-RateLimit-Remaining": "0",
-        },
-      }
-    );
-  }
-
-  // Get rate limit status
-  const status = apiLimiter.getStatus(identifier);
-
-  // Create response with rate limit headers
-  const response = NextResponse.next();
-
-  // Add rate limit headers
-  response.headers.set("X-RateLimit-Limit", String(status.limit));
-  response.headers.set("X-RateLimit-Remaining", String(status.remaining));
-  response.headers.set(
-    "X-RateLimit-Reset",
-    String(Math.floor(status.reset / 1000))
-  );
-
-  // Add security headers
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("X-XSS-Protection", "1; mode=block");
-  response.headers.set(
-    "Strict-Transport-Security",
-    "max-age=31536000; includeSubDomains"
-  );
-
-  // Add CORS headers for widget API
-  if (request.nextUrl.pathname.startsWith("/api/chat")) {
-    response.headers.set("Access-Control-Allow-Origin", "*");
-    response.headers.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    response.headers.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
-    );
-  }
-
-  return response;
+  return NextResponse.next();
 }
 
 /**
@@ -123,13 +114,6 @@ export async function middleware(request: NextRequest) {
  */
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -8,6 +8,7 @@
 
 import * as Claude from "../claude";
 import * as OpenAI from "../openai";
+import * as Gemini from "../gemini";
 
 // Unified message type
 export interface Message {
@@ -36,7 +37,7 @@ export interface ChatResponse {
 }
 
 // Provider types
-export type ProviderType = "claude" | "openai";
+export type ProviderType = "gemini" | "claude" | "openai";
 
 // Provider configuration
 export interface ProviderConfig {
@@ -177,6 +178,49 @@ class OpenAIProvider implements ChatProvider {
 }
 
 /**
+ * Gemini Provider Implementation (Cost-Effective Default)
+ */
+class GeminiProvider implements ChatProvider {
+  getProviderType(): ProviderType {
+    return "gemini";
+  }
+
+  async chat(messages: Message[], options?: ChatOptions): Promise<ChatResponse> {
+    const response = await Gemini.chat(messages, {
+      model: options?.model,
+      maxTokens: options?.maxTokens,
+      temperature: options?.temperature,
+    });
+
+    return {
+      content: response.content,
+      finishReason: response.finishReason,
+      usage: {
+        inputTokens: response.usage.promptTokens,
+        outputTokens: response.usage.completionTokens,
+        totalTokens: response.usage.totalTokens,
+      },
+      provider: "gemini",
+    };
+  }
+
+  async *chatStream(
+    messages: Message[],
+    options?: ChatOptions
+  ): AsyncGenerator<string, void, unknown> {
+    yield* Gemini.chatStream(messages, {
+      model: options?.model,
+      maxTokens: options?.maxTokens,
+      temperature: options?.temperature,
+    });
+  }
+
+  async embed(text: string): Promise<number[]> {
+    return Gemini.generateEmbedding(text);
+  }
+}
+
+/**
  * Provider Factory
  */
 export class ProviderFactory {
@@ -185,6 +229,9 @@ export class ProviderFactory {
   static getProvider(type: ProviderType): ChatProvider {
     if (!this.providers.has(type)) {
       switch (type) {
+        case "gemini":
+          this.providers.set(type, new GeminiProvider());
+          break;
         case "claude":
           this.providers.set(type, new ClaudeProvider());
           break;
@@ -286,12 +333,13 @@ export function createChatClient(config: ProviderConfig): ChatClient {
 }
 
 /**
- * Create default chat client (Claude with OpenAI fallback)
+ * Create default chat client (Gemini with Claude fallback)
+ * Gemini is cost-effective: 75% cheaper than OpenAI
  */
 export function createDefaultChatClient(): ChatClient {
   return new ChatClient({
-    provider: "claude",
-    fallbackProvider: "openai",
+    provider: "gemini",
+    fallbackProvider: "claude",
     defaultOptions: {
       temperature: 0.7,
       maxTokens: 4096,
